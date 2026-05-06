@@ -10,11 +10,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. 拉取代码到 Actions 服务器
+      # 1. 拉取代码
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. 连接到阿里云服务器，执行部署脚本
+      # 2. SSH 登录服务器执行部署
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -22,8 +22,10 @@ jobs:
           port: ${{ secrets.SERVER_PORT }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
+          envs: GH_TOKEN
           script: |
             cd /home/deploy/devops-practice
+            git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/CAPTURE760/devops-practice.git
             git pull origin main
             sudo docker build -t devops-app:latest .
             sudo docker stop devops-app 2>/dev/null || true
