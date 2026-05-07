@@ -1,0 +1,148 @@
+name: Deploy Monitoring Stack
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: '选择操作'
+        required: true
+        default: 'deploy'
+        type: choice
+        options:
+          - deploy
+          - restart
+          - stop
+          - view-logs
+
+jobs:
+  deploy-monitoring:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy/Update Monitoring Stack
+        if: github.event.inputs.action == 'deploy'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          port: ${{ secrets.SERVER_PORT }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            set -e
+            MONITOR_DIR="/home/deploy/monitoring"
+
+            # 复制监控配置文件到服务器
+            if [ -d /home/deploy/devops-practice/monitoring ]; then
+              sudo mkdir -p $MONITOR_DIR
+              sudo cp -r /home/deploy/devops-practice/monitoring/* $MONITOR_DIR/
+              echo "✅ 监控配置已复制到 $MONITOR_DIR"
+            else
+              echo "⚠️ 未找到 devops-practice/monitoring 目录"
+              exit 1
+            fi
+
+            # 安装 docker-compose（如没有）
+            if ! command -v docker-compose &> /dev/null; then
+              echo "📦 安装 docker-compose..."
+              sudo curl -L "https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-$(uname -s)-$(uname -m)" \
+                -o /usr/local/bin/docker-compose
+              sudo chmod +x /usr/local/bin/docker-compose
+              echo "✅ docker-compose 安装完成"
+            else
+              echo "✅ docker-compose 已存在: $(docker-compose --version)"
+            fi
+
+            # 拉取最新镜像
+            echo "📦 拉取监控镜像..."
+            cd $MONITOR_DIR
+            sudo docker-compose -f docker-compose.monitoring.yml pull
+
+            # 停止旧容器
+            echo "🛑 停止旧容器..."
+            sudo docker-compose -f docker-compose.monitoring.yml down || true
+
+            # 启动监控栈
+            echo "🚀 启动监控栈..."
+            sudo docker-compose -f docker-compose.monitoring.yml up -d
+
+            # 等待启动
+            echo "⏳ 等待服务就绪..."
+            sleep 15
+
+            # 验证
+            echo "✅ 当前容器状态："
+            sudo docker ps --format "table {{.Names}}\t{{.Status}}" | grep -E "(prometheus|grafana|cadvisor|node-exporter)" || echo "容器可能在启动中"
+
+            echo ""
+            echo "✅ 监控栈部署完成！"
+            echo "Prometheus: http://121.196.170.9:9090"
+            echo "Grafana:    http://121.196.170.9:3030  (admin / admin123)"
+            echo "cAdvisor:   http://121.196.170.9:9080"
+            echo "Node Exp:   http://121.196.170.9:9100"
+
+      - name: Restart Monitoring
+        if: github.event.inputs.action == 'restart'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          port: ${{ secrets.SERVER_PORT }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            cd /home/deploy/monitoring
+            echo "🔄 重启监控栈..."
+            sudo docker-compose -f docker-compose.monitoring.yml restart
+            sleep 10
+            sudo docker ps --format "table {{.Names}}\t{{.Status}}" | grep -E "(prometheus|grafana|cadvisor|node-exporter)"
+
+      - name: Stop Monitoring
+        if: github.event.inputs.action == 'stop'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          port: ${{ secrets.SERVER_PORT }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            cd /home/deploy/monitoring
+            echo "🛑 停止监控栈..."
+            sudo docker-compose -f docker-compose.monitoring.yml down
+            echo "✅ 已停止"
+
+      - name: View Logs
+        if: github.event.inputs.action == 'view-logs'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          port: ${{ secrets.SERVER_PORT }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            cd /home/deploy/monitoring
+            sudo docker-compose -f docker-compose.monitoring.yml logs --tail=20
+
+      - name: Notify Success
+        if: github.event.inputs.action == 'deploy'
+        run: |
+          curl -s -m 10 -X POST "${{ secrets.QYWX_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "msgtype": "text",
+              "text": {
+                "content": "📊 **监控栈部署成功**\nPrometheus: http://121.196.170.9:9090\nGrafana: http://121.196.170.9:3030\ncAdvisor: http://121.196.170.9:9080\nNode Exp: http://121.196.170.9:9100\n\nGrafana 账号: admin / admin123"
+              }
+            }' || true
+
+      - name: Notify Failure
+        if: failure()
+        run: |
+          curl -s -m 10 -X POST "${{ secrets.QYWX_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "msgtype": "text",
+              "text": {
+                "content": "❌ **监控栈部署失败**\n请检查 Actions 日志: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+              }
+            }' || true

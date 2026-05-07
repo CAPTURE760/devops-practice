@@ -1,0 +1,115 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "devops-overview",
+    "title": "DevOps 监控概览",
+    "tags": ["devops", "monitoring"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 1,
+    "refresh": "10s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "服务器 CPU 使用率",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+        "targets": [
+          {
+            "expr": "100 - (avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+            "legendFormat": "{{instance}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "percent", "min": 0, "max": 100, "label": "CPU %" }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "服务器内存使用率",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+        "targets": [
+          {
+            "expr": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100",
+            "legendFormat": "内存使用 %",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "percent", "min": 0, "max": 100, "label": "内存 %" }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "容器 CPU 使用率",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+        "targets": [
+          {
+            "expr": "rate(container_cpu_usage_seconds_total{container_name!=\"\"}[5m]) * 100",
+            "legendFormat": "{{container_name}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "percent", "min": 0, "label": "CPU %" }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "容器内存使用量 (MB)",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+        "targets": [
+          {
+            "expr": "container_memory_usage_bytes{container_name!=\"\"} / 1024 / 1024",
+            "legendFormat": "{{container_name}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "MB", "min": 0, "label": "内存 MB" }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "磁盘使用率",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+        "targets": [
+          {
+            "expr": "(1 - (node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"})) * 100",
+            "legendFormat": "磁盘使用 %",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "percent", "min": 0, "max": 100, "label": "磁盘 %" }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "网络 I/O (bytes/s)",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+        "targets": [
+          {
+            "expr": "rate(node_network_receive_bytes_total{device!~\"lo|docker.*|veth.*\"}[5m])",
+            "legendFormat": "接收 {{device}}",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(node_network_transmit_bytes_total{device!~\"lo|docker.*|veth.*\"}[5m])",
+            "legendFormat": "发送 {{device}}",
+            "refId": "B"
+          }
+        ],
+        "yaxes": [
+          { "format": "Bps", "min": 0, "label": "bytes/s" }
+        ]
+      }
+    ]
+  }
+}
