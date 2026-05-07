@@ -1,5 +1,3 @@
-version: "3.8"
-
 # Prometheus + Grafana + cAdvisor 监控栈
 services:
   # ========== Prometheus ==========
@@ -41,7 +39,7 @@ services:
 
   # ========== cAdvisor（容器监控）==========
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
+    image: amazon/cadvisor:latest
     container_name: cadvisor
     restart: unless-stopped
     privileged: true
