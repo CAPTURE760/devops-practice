@@ -38,10 +38,6 @@ jobs:
             sudo mkdir -p $MONITOR_DIR
             sudo cp -r /home/deploy/devops-practice/monitoring/* $MONITOR_DIR/
             echo "✅ 监控配置已复制到 $MONITOR_DIR"
-            else
-              echo "⚠️ 未找到 devops-practice/monitoring 目录"
-              exit 1
-            fi
 
             # 安装 docker-compose（如没有）
             if ! command -v docker-compose &> /dev/null; then
