@@ -35,11 +35,39 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
             cd /home/deploy/devops-staging
+            git fetch origin
+            git checkout dev
             git pull origin dev
             sudo docker build -t devops-staging:latest .
             sudo docker stop devops-staging 2>/dev/null || true
             sudo docker rm devops-staging 2>/dev/null || true
             sudo docker run -d --name devops-staging -p 8082:80 --restart unless-stopped devops-staging:latest
+            # 清理旧镜像
+            sudo docker image prune -f
+
+      - name: Notify Success (Staging)
+        if: success()
+        run: |
+          curl -X POST "${{ secrets.QYWX_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "msgtype": "markdown",
+              "markdown": {
+                "content": "## ✅ Staging 部署成功\n\n**环境**: Staging (8082)\n**分支**: dev\n**提交**: ${{ github.sha }}\n**时间**: $(date +\"%Y-%m-%d %H:%M:%S\")"
+              }
+            }'
+
+      - name: Notify Failure (Staging)
+        if: failure()
+        run: |
+          curl -X POST "${{ secrets.QYWX_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "msgtype": "markdown",
+              "markdown": {
+                "content": "## ❌ Staging 部署失败\n\n**环境**: Staging (8082)\n**分支**: dev\n**提交**: ${{ github.sha }}\n**查看日志**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+              }
+            }'
 
   deploy-production:
     needs: test
@@ -58,8 +86,36 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
             cd /home/deploy/devops-practice
+            git fetch origin
+            git checkout main
             git pull origin main
             sudo docker build -t devops-app:latest .
             sudo docker stop devops-app 2>/dev/null || true
             sudo docker rm devops-app 2>/dev/null || true
             sudo docker run -d --name devops-app -p 8081:80 --restart unless-stopped devops-app:latest
+            # 清理旧镜像
+            sudo docker image prune -f
+
+      - name: Notify Success (Production)
+        if: success()
+        run: |
+          curl -X POST "${{ secrets.QYWX_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "msgtype": "markdown",
+              "markdown": {
+                "content": "## ✅ Production 部署成功\n\n**环境**: Production (8081)\n**分支**: main\n**提交**: ${{ github.sha }}\n**时间**: $(date +\"%Y-%m-%d %H:%M:%S\")"
+              }
+            }'
+
+      - name: Notify Failure (Production)
+        if: failure()
+        run: |
+          curl -X POST "${{ secrets.QYWX_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "msgtype": "markdown",
+              "markdown": {
+                "content": "## ❌ Production 部署失败\n\n**环境**: Production (8081)\n**分支**: main\n**提交**: ${{ github.sha }}\n**查看日志**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+              }
+            }'
