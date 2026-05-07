@@ -48,26 +48,16 @@ jobs:
       - name: Notify Success (Staging)
         if: success()
         run: |
-          curl -X POST "${{ secrets.QYWX_WEBHOOK }}" \
+          curl -s -m 10 -X POST "${{ secrets.QYWX_WEBHOOK }}" \
             -H "Content-Type: application/json" \
-            -d '{
-              "msgtype": "markdown",
-              "markdown": {
-                "content": "## ✅ Staging 部署成功\n\n**环境**: Staging (8082)\n**分支**: dev\n**提交**: ${{ github.sha }}\n**时间**: $(date +\"%Y-%m-%d %H:%M:%S\")"
-              }
-            }'
+            -d '{"msgtype":"text","text":{"content":"✅ Staging 部署成功\n环境: Staging (8082)\n分支: dev\n提交: ${{ github.sha }}"}}' || true
 
       - name: Notify Failure (Staging)
         if: failure()
         run: |
-          curl -X POST "${{ secrets.QYWX_WEBHOOK }}" \
+          curl -s -m 10 -X POST "${{ secrets.QYWX_WEBHOOK }}" \
             -H "Content-Type: application/json" \
-            -d '{
-              "msgtype": "markdown",
-              "markdown": {
-                "content": "## ❌ Staging 部署失败\n\n**环境**: Staging (8082)\n**分支**: dev\n**提交**: ${{ github.sha }}\n**查看日志**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-              }
-            }'
+            -d '{"msgtype":"text","text":{"content":"❌ Staging 部署失败\n环境: Staging (8082)\n分支: dev\n日志: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"}}' || true
 
   deploy-production:
     needs: test
@@ -99,23 +89,13 @@ jobs:
       - name: Notify Success (Production)
         if: success()
         run: |
-          curl -X POST "${{ secrets.QYWX_WEBHOOK }}" \
+          curl -s -m 10 -X POST "${{ secrets.QYWX_WEBHOOK }}" \
             -H "Content-Type: application/json" \
-            -d '{
-              "msgtype": "markdown",
-              "markdown": {
-                "content": "## ✅ Production 部署成功\n\n**环境**: Production (8081)\n**分支**: main\n**提交**: ${{ github.sha }}\n**时间**: $(date +\"%Y-%m-%d %H:%M:%S\")"
-              }
-            }'
+            -d '{"msgtype":"text","text":{"content":"✅ Production 部署成功\n环境: Production (8081)\n分支: main\n提交: ${{ github.sha }}"}}' || true
 
       - name: Notify Failure (Production)
         if: failure()
         run: |
-          curl -X POST "${{ secrets.QYWX_WEBHOOK }}" \
+          curl -s -m 10 -X POST "${{ secrets.QYWX_WEBHOOK }}" \
             -H "Content-Type: application/json" \
-            -d '{
-              "msgtype": "markdown",
-              "markdown": {
-                "content": "## ❌ Production 部署失败\n\n**环境**: Production (8081)\n**分支**: main\n**提交**: ${{ github.sha }}\n**查看日志**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-              }
-            }'
+            -d '{"msgtype":"text","text":{"content":"❌ Production 部署失败\n环境: Production (8081)\n分支: main\n日志: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"}}' || true
