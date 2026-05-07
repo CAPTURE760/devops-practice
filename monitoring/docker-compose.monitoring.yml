@@ -1,8 +1,9 @@
 # Prometheus + Grafana + cAdvisor 监控栈
+
 services:
   # ========== Prometheus ==========
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.52.0
     container_name: prometheus
     restart: unless-stopped
     command:
@@ -20,7 +21,7 @@ services:
 
   # ========== Grafana ==========
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:11.2.0
     container_name: grafana
     restart: unless-stopped
     ports:
@@ -39,7 +40,7 @@ services:
 
   # ========== cAdvisor（容器监控）==========
   cadvisor:
-    image: amazon/cadvisor:latest
+    image: amazon/cadvisor:v0.50.0
     container_name: cadvisor
     restart: unless-stopped
     privileged: true
@@ -56,7 +57,7 @@ services:
 
   # ========== Node Exporter（服务器指标）==========
   node-exporter:
-    image: prom/node-exporter:latest
+    image: prom/node-exporter:v1.8.0
     container_name: node-exporter
     restart: unless-stopped
     command:

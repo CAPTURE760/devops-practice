@@ -33,11 +33,11 @@ jobs:
             set -e
             MONITOR_DIR="/home/deploy/monitoring"
 
-            # 复制监控配置文件到服务器
-            if [ -d /home/deploy/devops-practice/monitoring ]; then
-              sudo mkdir -p $MONITOR_DIR
-              sudo cp -r /home/deploy/devops-practice/monitoring/* $MONITOR_DIR/
-              echo "✅ 监控配置已复制到 $MONITOR_DIR"
+            # 强制清理旧配置，复制最新
+            sudo rm -rf $MONITOR_DIR
+            sudo mkdir -p $MONITOR_DIR
+            sudo cp -r /home/deploy/devops-practice/monitoring/* $MONITOR_DIR/
+            echo "✅ 监控配置已复制到 $MONITOR_DIR"
             else
               echo "⚠️ 未找到 devops-practice/monitoring 目录"
               exit 1
