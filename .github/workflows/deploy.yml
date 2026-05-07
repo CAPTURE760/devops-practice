@@ -42,8 +42,19 @@ jobs:
             sudo docker stop devops-staging 2>/dev/null || true
             sudo docker rm devops-staging 2>/dev/null || true
             sudo docker run -d --name devops-staging -p 8082:80 --restart unless-stopped devops-staging:latest
-            # 清理旧镜像
             sudo docker image prune -f
+
+      - name: Health Check (Staging)
+        run: |
+          echo "等待服务启动..."
+          sleep 5
+          response=$(curl -s -o /dev/null -w "%{http_code}" http://${{ secrets.SERVER_HOST }}:8082 || echo "000")
+          if [ "$response" = "200" ]; then
+            echo "✅ Staging 健康检查通过 (HTTP $response)"
+          else
+            echo "❌ Staging 健康检查失败 (HTTP $response)"
+            exit 1
+          fi
 
       - name: Notify Success (Staging)
         if: success()
@@ -83,8 +94,19 @@ jobs:
             sudo docker stop devops-app 2>/dev/null || true
             sudo docker rm devops-app 2>/dev/null || true
             sudo docker run -d --name devops-app -p 8081:80 --restart unless-stopped devops-app:latest
-            # 清理旧镜像
             sudo docker image prune -f
+
+      - name: Health Check (Production)
+        run: |
+          echo "等待服务启动..."
+          sleep 5
+          response=$(curl -s -o /dev/null -w "%{http_code}" http://${{ secrets.SERVER_HOST }}:8081 || echo "000")
+          if [ "$response" = "200" ]; then
+            echo "✅ Production 健康检查通过 (HTTP $response)"
+          else
+            echo "❌ Production 健康检查失败 (HTTP $response)"
+            exit 1
+          fi
 
       - name: Notify Success (Production)
         if: success()
