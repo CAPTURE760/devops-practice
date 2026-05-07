@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - dev
 
 jobs:
   test:
@@ -17,14 +18,38 @@ jobs:
           chmod +x test.sh
           ./test.sh
 
-  deploy:
+  deploy-staging:
     needs: test
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/dev'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Deploy via SSH
+      - name: Deploy to Staging
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          port: ${{ secrets.SERVER_PORT }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            cd /home/deploy/devops-staging
+            git pull origin dev
+            sudo docker build -t devops-staging:latest .
+            sudo docker stop devops-staging 2>/dev/null || true
+            sudo docker rm devops-staging 2>/dev/null || true
+            sudo docker run -d --name devops-staging -p 8082:80 --restart unless-stopped devops-staging:latest
+
+  deploy-production:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Production
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
