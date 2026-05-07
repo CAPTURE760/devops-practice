@@ -1,29 +1,40 @@
 ﻿name: Deploy to Server
 
 on:
-  push:
-    branches:
-      - main
+ push:
+ branches:
+ - main
 
 jobs:
-  deploy:
-    runs-on: ubuntu-latest
+ test:
+ runs-on: ubuntu-latest
+ steps:
+ - name: Checkout code
+ uses: actions/checkout@v4
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+ - name: Run tests
+ run: |
+ chmod +x test.sh
+ ./test.sh
 
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          port: ${{ secrets.SERVER_PORT }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          script: |
-            cd /home/deploy/devops-practice
-            git pull origin main
-            sudo docker build -t devops-app:latest .
-            sudo docker stop devops-app 2>/dev/null || true
-            sudo docker rm devops-app 2>/dev/null || true
-            sudo docker run -d --name devops-app -p 8081:80 --restart unless-stopped devops-app:latest
+ deploy:
+ needs: test
+ runs-on: ubuntu-latest
+ steps:
+ - name: Checkout code
+ uses: actions/checkout@v4
+
+ - name: Deploy via SSH
+ uses: appleboy/ssh-action@v1.0.3
+ with:
+ host: ${{ secrets.SERVER_HOST }}
+ port: ${{ secrets.SERVER_PORT }}
+ username: ${{ secrets.SERVER_USER }}
+ key: ${{ secrets.SERVER_SSH_KEY }}
+ script: |
+ cd /home/deploy/devops-practice
+ git pull origin main
+ sudo docker build -t devops-app:latest .
+ sudo docker stop devops-app 2>/dev/null || true
+ sudo docker rm devops-app 2>/dev/null || true
+ sudo docker run -d --name devops-app -p 8081:80 --restart unless-stopped devops-app:latest
