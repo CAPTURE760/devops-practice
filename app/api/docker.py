@@ -50,9 +50,12 @@ async def list_containers(all_containers: bool = True):
     result = []
     for c in containers:
         ports = []
-        for p in c.ports or []:
-            if p.get("PublicPort"):
-                ports.append(f"{p['PublicPort']}:{p['PrivatePort']}")
+        ports_data = c.ports or {}
+        for protocol_ports in ports_data.values():
+            if protocol_ports and isinstance(protocol_ports, list):
+                for p in protocol_ports:
+                    if isinstance(p, dict) and p.get("PublicPort"):
+                        ports.append(f"{p['PublicPort']}/{p.get('IP', '0.0.0.0')}/{list(ports_data.keys())[0]}")
         result.append(ContainerStats(
             id=c.id[:12],
             name=c.names[0].lstrip("/"),
