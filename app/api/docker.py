@@ -61,7 +61,7 @@ async def list_containers(all_containers: bool = True):
             name=c.name.lstrip("/"),
             image=str(c.image),
             status=c.status,
-            state=c.state,
+            state=c.attrs["State"]["Status"],
             created=c.created,
             ports=ports
         ))
@@ -78,7 +78,7 @@ async def container_detail(container_id: str):
             name=container.name,
             image=container.image.tags[0] if container.image.tags else container.image.short_id,
             status=container.status,
-            state=container.state,
+            state=container.attrs["State"]["Status"],
             created=info["Created"],
             ports=info["NetworkSettings"]["Ports"] or {},
             mounts=[{"type": m["Type"], "source": m["Source"], "dest": m["Destination"]}
