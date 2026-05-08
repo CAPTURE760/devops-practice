@@ -20,7 +20,7 @@ class ContainerStats(BaseModel):
     image: str
     status: str
     state: str
-    created: int
+    created: str
     ports: list[str]
 
 class ContainerDetail(BaseModel):
@@ -62,7 +62,7 @@ async def list_containers(all_containers: bool = True):
             image=str(c.image),
             status=c.status,
             state=c.attrs["State"]["Status"],
-            created=c.created,
+            created=c.attrs["Created"],
             ports=ports
         ))
     return result
