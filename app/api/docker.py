@@ -46,7 +46,7 @@ async def docker_status():
 @router.get("/containers", response_model=list[ContainerStats])
 async def list_containers(all_containers: bool = True):
     client = get_docker_client()
-    containers = client.list_containers(all=all_containers)
+    containers = client.containers.list(all=all_containers)
     result = []
     for c in containers:
         ports = []
