@@ -114,7 +114,16 @@ async def restart_container(container_id: str):
 async def list_images():
     client = get_docker_client()
     images = client.images.list()
-    return [{"id": i.id, "tags": i.tags, "size": i.attrs["Size"]} for i in images]
+    result = []
+    for i in images:
+        tags = i.attrs.get("RepoTags") or []
+        size = int(i.attrs.get("Size", 0))
+        result.append({
+            "id": i.attrs["Id"].replace("sha256:", "")[-12:],
+            "tags": tags,
+            "size": size
+        })
+    return result
 
 @router.get("/volumes")
 async def list_volumes():
