@@ -3,12 +3,15 @@ services:
     build: .
     container_name: ai-ops-app
     restart: unless-stopped
+    privileged: true
     ports:
       - "8000:8000"
     volumes:
       # 挂载服务器日志目录（需要先创建）
       - /var/log/syslog:/var/log/syslog:ro
       - ./app.log:/app/app.log:ro
+      # 挂载 Docker socket（用于容器管理）
+      - /var/run/docker.sock:/var/run/docker.sock
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
