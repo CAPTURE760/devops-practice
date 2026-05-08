@@ -58,8 +58,8 @@ async def list_containers(all_containers: bool = True):
                         ports.append(f"{p['PublicPort']}/{p.get('IP', '0.0.0.0')}/{list(ports_data.keys())[0]}")
         result.append(ContainerStats(
             id=c.id[:12],
-            name=c.names[0].lstrip("/"),
-            image=c.image,
+            name=c.name.lstrip("/"),
+            image=str(c.image),
             status=c.status,
             state=c.state,
             created=c.created,
