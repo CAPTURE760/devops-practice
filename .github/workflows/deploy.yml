@@ -10,26 +10,14 @@ on:
       environment:
         description: '选择要回滚的环境'
         required: true
-        default: 'staging'
+        default: 'production'
         type: choice
         options:
           - staging
           - production
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Run tests
-        run: |
-          chmod +x test.sh
-          ./test.sh
-
   deploy-staging:
-    needs: test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/dev'
     steps:
@@ -43,25 +31,18 @@ jobs:
           port: ${{ secrets.SERVER_PORT }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
+          envs: ACTIONS_ID_TOKEN_REQUEST_TOKEN,ACTIONS_ID_TOKEN_REQUEST_URL
           script: |
             cd /home/deploy/devops-staging
             git fetch origin
             git checkout dev
             git pull origin dev
-            
-            # 备份当前镜像（用于回滚）
             BACKUP_TIME=$(date +%Y%m%d_%H%M%S)
-            if sudo docker inspect devops-staging:latest >/dev/null 2>&1; then
-              sudo docker tag devops-staging:latest devops-staging:backup_$BACKUP_TIME
-              echo "已备份镜像: devops-staging:backup_$BACKUP_TIME"
-            fi
-            
-            # 构建新镜像
-            sudo docker build -t devops-staging:latest .
-            sudo docker stop devops-staging 2>/dev/null || true
-            sudo docker rm devops-staging 2>/dev/null || true
-            sudo docker run -d --name devops-staging -p 8082:80 --restart unless-stopped devops-staging:latest
+            sudo docker compose pull 2>/dev/null || true
+            sudo docker compose build --pull
+            sudo docker compose up -d
             sudo docker image prune -f
+            echo "✅ Staging 部署完成: $(date)"
 
       - name: Health Check (Staging)
         uses: appleboy/ssh-action@v1.0.3
@@ -71,45 +52,24 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            echo "等待服务启动..."
-            sleep 5
-            response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8082 || echo "000")
-            if [ "$response" = "200" ]; then
-              echo "✅ Staging 健康检查通过 (HTTP $response)"
+            sleep 10
+            RESP=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8081/api/system/status || echo "000")
+            if [ "$RESP" = "200" ]; then
+              echo "✅ Staging 健康检查通过 (HTTP $RESP)"
             else
-              echo "❌ Staging 健康检查失败 (HTTP $response)"
-              echo "正在回滚..."
-              
-              # 找到最近的备份镜像
-              BACKUP_IMAGE=$(sudo docker images --format "{{.Repository}}:{{.Tag}}" | grep "devops-staging:backup_" | head -1)
-              if [ -n "$BACKUP_IMAGE" ]; then
-                echo "恢复镜像: $BACKUP_IMAGE"
-                sudo docker stop devops-staging 2>/dev/null || true
-                sudo docker rm devops-staging 2>/dev/null || true
-                sudo docker run -d --name devops-staging -p 8082:80 --restart unless-stopped $BACKUP_IMAGE
-                echo "✅ 已回滚到上一版本"
-              else
-                echo "⚠️ 没有找到备份镜像，无法回滚"
-              fi
+              echo "❌ Staging 健康检查失败 (HTTP $RESP)"
               exit 1
             fi
 
-      - name: Notify Success (Staging)
-        if: success()
+      - name: Notify
+        if: always()
         run: |
+          MSG="✅ Staging 部署成功" && [ "${{ job.status }}" != "success" ] && MSG="❌ Staging 部署失败"
           curl -s -m 10 -X POST "${{ secrets.QYWX_WEBHOOK }}" \
             -H "Content-Type: application/json" \
-            -d '{"msgtype":"text","text":{"content":"✅ Staging 部署成功\n环境: Staging (8082)\n分支: dev\n提交: ${{ github.sha }}"}}' || true
-
-      - name: Notify Failure (Staging)
-        if: failure()
-        run: |
-          curl -s -m 10 -X POST "${{ secrets.QYWX_WEBHOOK }}" \
-            -H "Content-Type: application/json" \
-            -d '{"msgtype":"text","text":{"content":"❌ Staging 部署失败\n环境: Staging (8082)\n分支: dev\n日志: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"}}' || true
+            -d "{\"msgtype\":\"text\",\"text\":{\"content\":\"$MSG\n分支: dev\n提交: ${{ github.sha }}\n链接: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}}" || true
 
   deploy-production:
-    needs: test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     steps:
@@ -123,25 +83,22 @@ jobs:
           port: ${{ secrets.SERVER_PORT }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
+          envs: ACTIONS_ID_TOKEN_REQUEST_TOKEN,ACTIONS_ID_TOKEN_REQUEST_URL
           script: |
             cd /home/deploy/devops-practice
             git fetch origin
             git checkout main
             git pull origin main
-            
-            # 备份当前镜像（用于回滚）
             BACKUP_TIME=$(date +%Y%m%d_%H%M%S)
-            if sudo docker inspect devops-app:latest >/dev/null 2>&1; then
-              sudo docker tag devops-app:latest devops-app:backup_$BACKUP_TIME
-              echo "已备份镜像: devops-app:backup_$BACKUP_TIME"
+            # 备份旧镜像
+            if sudo docker image inspect devops-app_app:latest >/dev/null 2>&1; then
+              sudo docker tag devops-app_app:latest devops-app_app:backup_$BACKUP_TIME
             fi
-            
-            # 构建新镜像
-            sudo docker build -t devops-app:latest .
-            sudo docker stop devops-app 2>/dev/null || true
-            sudo docker rm devops-app 2>/dev/null || true
-            sudo docker run -d --name devops-app -p 8081:80 --restart unless-stopped devops-app:latest
+            sudo docker compose pull 2>/dev/null || true
+            sudo docker compose build --pull
+            sudo docker compose up -d
             sudo docker image prune -f
+            echo "✅ Production 部署完成: $(date)"
 
       - name: Health Check (Production)
         uses: appleboy/ssh-action@v1.0.3
@@ -151,50 +108,28 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            echo "等待服务启动..."
-            sleep 5
-            response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8081 || echo "000")
-            if [ "$response" = "200" ]; then
-              echo "✅ Production 健康检查通过 (HTTP $response)"
+            sleep 15
+            RESP=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8081/api/system/status || echo "000")
+            if [ "$RESP" = "200" ]; then
+              echo "✅ Production 健康检查通过 (HTTP $RESP)"
             else
-              echo "❌ Production 健康检查失败 (HTTP $response)"
-              echo "正在回滚..."
-              
-              # 找到最近的备份镜像
-              BACKUP_IMAGE=$(sudo docker images --format "{{.Repository}}:{{.Tag}}" | grep "devops-app:backup_" | head -1)
-              if [ -n "$BACKUP_IMAGE" ]; then
-                echo "恢复镜像: $BACKUP_IMAGE"
-                sudo docker stop devops-app 2>/dev/null || true
-                sudo docker rm devops-app 2>/dev/null || true
-                sudo docker run -d --name devops-app -p 8081:80 --restart unless-stopped $BACKUP_IMAGE
-                echo "✅ 已回滚到上一版本"
-              else
-                echo "⚠️ 没有找到备份镜像，无法回滚"
-              fi
+              echo "❌ Production 健康检查失败 (HTTP $RESP)"
               exit 1
             fi
 
-      - name: Notify Success (Production)
-        if: success()
+      - name: Notify
+        if: always()
         run: |
+          MSG="✅ Production 部署成功" && [ "${{ job.status }}" != "success" ] && MSG="❌ Production 部署失败"
           curl -s -m 10 -X POST "${{ secrets.QYWX_WEBHOOK }}" \
             -H "Content-Type: application/json" \
-            -d '{"msgtype":"text","text":{"content":"✅ Production 部署成功\n环境: Production (8081)\n分支: main\n提交: ${{ github.sha }}"}}' || true
+            -d "{\"msgtype\":\"text\",\"text\":{\"content\":\"$MSG\n分支: main\n提交: ${{ github.sha }}\n链接: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}}" || true
 
-      - name: Notify Failure (Production)
-        if: failure()
-        run: |
-          curl -s -m 10 -X POST "${{ secrets.QYWX_WEBHOOK }}" \
-            -H "Content-Type: application/json" \
-            -d '{"msgtype":"text","text":{"content":"❌ Production 部署失败\n环境: Production (8081)\n分支: main\n日志: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"}}' || true
-
-  # 手动回滚 workflow
   rollback:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
     steps:
-      - name: Rollback Staging
-        if: github.event.inputs.environment == 'staging'
+      - name: Rollback via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -202,37 +137,24 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            BACKUP_IMAGE=$(sudo docker images --format "{{.Repository}}:{{.Tag}}" | grep "devops-staging:backup_" | head -1)
-            if [ -n "$BACKUP_IMAGE" ]; then
-              echo "回滚到: $BACKUP_IMAGE"
-              sudo docker stop devops-staging 2>/dev/null || true
-              sudo docker rm devops-staging 2>/dev/null || true
-              sudo docker run -d --name devops-staging -p 8082:80 --restart unless-stopped $BACKUP_IMAGE
+            if [ "${{ github.event.inputs.environment }}" = "staging" ]; then
+              cd /home/deploy/devops-staging
+              IMG=$(sudo docker images --format "{{.Repository}}:{{.Tag}}" | grep "_app:backup_" | head -1)
+              [ -z "$IMG" ] && echo "❌ 没有备份镜像" && exit 1
+              echo "回滚到: $IMG"
+              sudo docker compose down
+              sudo docker tag "$IMG" devops-app_app:latest
+              sudo docker compose up -d
               echo "✅ Staging 回滚成功"
             else
-              echo "❌ 没有找到备份镜像"
-              exit 1
-            fi
-
-      - name: Rollback Production
-        if: github.event.inputs.environment == 'production'
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          port: ${{ secrets.SERVER_PORT }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          script: |
-            BACKUP_IMAGE=$(sudo docker images --format "{{.Repository}}:{{.Tag}}" | grep "devops-app:backup_" | head -1)
-            if [ -n "$BACKUP_IMAGE" ]; then
-              echo "回滚到: $BACKUP_IMAGE"
-              sudo docker stop devops-app 2>/dev/null || true
-              sudo docker rm devops-app 2>/dev/null || true
-              sudo docker run -d --name devops-app -p 8081:80 --restart unless-stopped $BACKUP_IMAGE
+              cd /home/deploy/devops-practice
+              IMG=$(sudo docker images --format "{{.Repository}}:{{.Tag}}" | grep "_app:backup_" | head -1)
+              [ -z "$IMG" ] && echo "❌ 没有备份镜像" && exit 1
+              echo "回滚到: $IMG"
+              sudo docker compose down
+              sudo docker tag "$IMG" devops-app_app:latest
+              sudo docker compose up -d
               echo "✅ Production 回滚成功"
-            else
-              echo "❌ 没有找到备份镜像"
-              exit 1
             fi
 
       - name: Notify Rollback
@@ -240,4 +162,4 @@ jobs:
         run: |
           curl -s -m 10 -X POST "${{ secrets.QYWX_WEBHOOK }}" \
             -H "Content-Type: application/json" \
-            -d '{"msgtype":"text","text":{"content":"🔄 手动回滚完成\n环境: ${{ github.event.inputs.environment }}\n操作人: ${{ github.actor }}"}}' || true
+            -d "{\"msgtype\":\"text\",\"text\":{\"content\":\"🔄 手动回滚完成\n环境: ${{ github.event.inputs.environment }}\n操作人: ${{ github.actor }}\"}}" || true

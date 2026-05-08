@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Ops Platform</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #0f1117; color: #e2e8f0; font-family: 'Segoe UI', system-ui, sans-serif; }
+    .card { background: #1a1d27; border: 1px solid #2d3142; border-radius: 12px; }
+    .metric-card { background: linear-gradient(135deg, #1a1d27, #252836); }
+    .ok   { color: #34d399; }
+    .warn { color: #fbbf24; }
+    .crit { color: #f87171; }
+    .pct-bar { height: 6px; border-radius: 3px; background: #2d3142; overflow: hidden; }
+    .pct-fill { height: 100%; border-radius: 3px; transition: width 0.5s; }
+    .tab-btn { transition: all 0.2s; }
+    .tab-btn.active { background: #374151; color: #60a5fa; border-color: #60a5fa; }
+    pre { font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 12px; }
+    .log-line:hover { background: #1f2937; }
+    .refresh-spin { animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<!-- 顶部导航 -->
+<header class="border-b border-gray-700 px-6 py-4 flex items-center justify-between">
+  <div class="flex items-center gap-3">
+    <div class="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center font-bold text-sm">AI</div>
+    <span class="font-semibold text-lg">AI Ops Platform</span>
+  </div>
+  <div class="flex items-center gap-3">
+    <span id="clock" class="text-gray-400 text-sm"></span>
+    <button onclick="refreshAll()" id="btnRefresh" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg text-sm font-medium transition">
+      刷新
+    </button>
+  </div>
+</header>
+
+<!-- 主内容 -->
+<main class="p-6 max-w-7xl mx-auto">
+
+  <!-- AI 状态 & 告警 -->
+  <div id="aiBanner" class="card p-4 mb-6 flex items-center gap-4">
+    <div id="aiIcon" class="w-10 h-10 rounded-full bg-green-900 flex items-center justify-center text-xl">✅</div>
+    <div class="flex-1">
+      <div id="aiStatus" class="font-medium">正在分析系统状态...</div>
+      <div id="aiReport" class="text-sm text-gray-400 mt-0.5"></div>
+    </div>
+    <div class="text-right text-sm text-gray-500">
+      <div id="aiTime"></div>
+    </div>
+  </div>
+
+  <!-- 四大指标卡片 -->
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6" id="metricGrid">
+    <div class="metric-card card p-5">
+      <div class="text-gray-400 text-sm mb-2">🖥️ CPU</div>
+      <div id="cpuVal" class="text-3xl font-bold mb-2">--</div>
+      <div class="pct-bar mb-1"><div id="cpuBar" class="pct-fill bg-blue-500" style="width:0%"></div></div>
+      <div class="text-xs text-gray-500" id="cpuCores"></div>
+    </div>
+    <div class="metric-card card p-5">
+      <div class="text-gray-400 text-sm mb-2">🧠 内存</div>
+      <div id="memVal" class="text-3xl font-bold mb-2">--</div>
+      <div class="pct-bar mb-1"><div id="memBar" class="pct-fill bg-purple-500" style="width:0%"></div></div>
+      <div class="text-xs text-gray-500" id="memInfo"></div>
+    </div>
+    <div class="metric-card card p-5">
+      <div class="text-gray-400 text-sm mb-2">💾 磁盘 /</div>
+      <div id="diskVal" class="text-3xl font-bold mb-2">--</div>
+      <div class="pct-bar mb-1"><div id="diskBar" class="pct-fill bg-orange-500" style="width:0%"></div></div>
+      <div class="text-xs text-gray-500" id="diskInfo"></div>
+    </div>
+    <div class="metric-card card p-5">
+      <div class="text-gray-400 text-sm mb-2">🐳 Docker</div>
+      <div id="dockerVal" class="text-3xl font-bold mb-2">--</div>
+      <div id="dockerStatus" class="text-xs text-gray-500 mt-2"></div>
+    </div>
+  </div>
+
+  <!-- 标签页 -->
+  <div class="flex gap-2 mb-4 border-b border-gray-700 pb-1">
+    <button class="tab-btn active px-4 py-2 rounded-t-lg text-sm border border-transparent" data-tab="containers">容器管理</button>
+    <button class="tab-btn px-4 py-2 rounded-t-lg text-sm border border-transparent" data-tab="logs">日志查看</button>
+    <button class="tab-btn px-4 py-2 rounded-t-lg text-sm border border-transparent" data-tab="ai">AI 分析</button>
+    <button class="tab-btn px-4 py-2 rounded-t-lg text-sm border border-transparent" data-tab="sysinfo">系统详情</button>
+  </div>
+
+  <!-- 容器管理 -->
+  <div id="tab-containers" class="tab-panel">
+    <div class="card overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-800 text-gray-400 text-left">
+          <tr>
+            <th class="px-4 py-3 font-medium">容器</th>
+            <th class="px-4 py-3 font-medium">镜像</th>
+            <th class="px-4 py-3 font-medium">状态</th>
+            <th class="px-4 py-3 font-medium">端口</th>
+            <th class="px-4 py-3 font-medium text-right">操作</th>
+          </tr>
+        </thead>
+        <tbody id="containersBody" class="divide-y divide-gray-700"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 日志查看 -->
+  <div id="tab-logs" class="tab-panel hidden">
+    <div class="card p-4 mb-4">
+      <div class="flex gap-3 items-end flex-wrap">
+        <div>
+          <label class="text-xs text-gray-400 block mb-1">日志文件</label>
+          <select id="logPath" class="bg-gray-800 border border-gray-600 rounded px-3 py-1.5 text-sm w-64">
+            <option value="/var/log/syslog">/var/log/syslog</option>
+            <option value="/var/log/auth.log">/var/log/auth.log</option>
+            <option value="/var/log/nginx/access.log">/var/log/nginx/access.log</option>
+            <option value="/var/log/nginx/error.log">/var/log/nginx/error.log</option>
+            <option value="/home/deploy/devops-practice/app.log">应用日志</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-xs text-gray-400 block mb-1">行数</label>
+          <input id="logLines" type="number" value="100" min="10" max="1000" class="bg-gray-800 border border-gray-600 rounded px-3 py-1.5 text-sm w-24">
+        </div>
+        <div>
+          <label class="text-xs text-gray-400 block mb-1">关键词过滤</label>
+          <input id="logKeyword" type="text" placeholder="可选" class="bg-gray-800 border border-gray-600 rounded px-3 py-1.5 text-sm w-40">
+        </div>
+        <button onclick="loadLogs()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded text-sm">查看</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="flex justify-between items-center px-4 py-2 border-b border-gray-700">
+        <span class="text-xs text-gray-400" id="logMeta"></span>
+        <span class="text-xs text-gray-500" id="logTotal"></span>
+      </div>
+      <pre id="logContent" class="p-4 h-96 overflow-y-auto text-gray-300 leading-relaxed"></pre>
+    </div>
+  </div>
+
+  <!-- AI 分析 -->
+  <div id="tab-ai" class="tab-panel hidden">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="card p-5">
+        <h3 class="font-medium mb-4">⚙️ 自定义分析</h3>
+        <div class="space-y-3">
+          <div>
+            <label class="text-xs text-gray-400 block mb-1">CPU 使用率 (%)</label>
+            <input id="aiCpu" type="number" min="0" max="100" placeholder="如 85" class="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm">
+          </div>
+          <div>
+            <label class="text-xs text-gray-400 block mb-1">内存使用率 (%)</label>
+            <input id="aiMem" type="number" min="0" max="100" placeholder="如 90" class="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm">
+          </div>
+          <div>
+            <label class="text-xs text-gray-400 block mb-1">磁盘使用率 (%)</label>
+            <input id="aiDisk" type="number" min="0" max="100" placeholder="如 70" class="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm">
+          </div>
+          <button onclick="runCustomAnalyze()" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded text-sm font-medium">开始分析</button>
+        </div>
+        <div id="customResult" class="mt-4 text-sm"></div>
+      </div>
+      <div class="card p-5">
+        <h3 class="font-medium mb-4">📊 分析历史</h3>
+        <div id="historyList" class="space-y-2 text-sm text-gray-400">暂无记录</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 系统详情 -->
+  <div id="tab-sysinfo" class="tab-panel hidden">
+    <div id="sysinfoContent" class="space-y-3"></div>
+  </div>
+
+</main>
+
+<script>
+const API = window.location.origin;
+
+// ── 时钟 ──
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent = now.toLocaleString('zh-CN');
+}
+updateClock();
+setInterval(updateClock, 1000);
+
+// ── 标签页切换 ──
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+    document.getElementById('tab-' + btn.dataset.tab).classList.remove('hidden');
+  });
+});
+
+// ── 刷新按钮 ──
+document.getElementById('btnRefresh').addEventListener('click', refreshAll);
+
+async function refreshAll() {
+  const btn = document.getElementById('btnRefresh');
+  btn.innerHTML = '<span class="refresh-spin">⟳</span>';
+  btn.disabled = true;
+  await Promise.all([loadAi(), loadSystem(), loadDocker()]);
+  btn.innerHTML = '刷新';
+  btn.disabled = false;
+}
+
+// ── AI 分析 & 状态 ──
+let history = [];
+async function loadAi() {
+  try {
+    const res = await fetch(API + '/api/ai/analyze');
+    const data = await res.json();
+    document.getElementById('aiTime').textContent = data.timestamp;
+
+    const banner = document.getElementById('aiBanner');
+    const icon = document.getElementById('aiIcon');
+    const statusEl = document.getElementById('aiStatus');
+    const reportEl = document.getElementById('aiReport');
+
+    if (data.status === 'critical') {
+      banner.className = 'card p-4 mb-6 flex items-center gap-4 border-red-700 bg-red-950';
+      icon.className = 'w-10 h-10 rounded-full bg-red-900 flex items-center justify-center text-xl'; icon.textContent = '🚨';
+    } else if (data.status === 'warning') {
+      banner.className = 'card p-4 mb-6 flex items-center gap-4 border-yellow-700 bg-yellow-950';
+      icon.className = 'w-10 h-10 rounded-full bg-yellow-900 flex items-center justify-center text-xl'; icon.textContent = '⚠️';
+    } else {
+      banner.className = 'card p-4 mb-6 flex items-center gap-4 border-green-700 bg-green-950';
+      icon.className = 'w-10 h-10 rounded-full bg-green-900 flex items-center justify-center text-xl'; icon.textContent = '✅';
+    }
+    statusEl.textContent = data.report;
+    reportEl.textContent = data.alerts.length ? data.alerts.map(a => `【${a.level.toUpperCase()}】${a.message}`).join(' | ') : '无告警';
+
+    // 保存历史
+    history.unshift({ time: data.timestamp, ...data });
+    if (history.length > 10) history.pop();
+    renderHistory();
+  } catch (e) {
+    document.getElementById('aiStatus').textContent = '无法连接服务器: ' + e.message;
+  }
+}
+
+function renderHistory() {
+  const el = document.getElementById('historyList');
+  if (!history.length) { el.textContent = '暂无记录'; return; }
+  el.innerHTML = history.map(h => `
+    <div class="flex items-center gap-3 p-2 rounded bg-gray-800/50">
+      <span class="text-xs text-gray-500 w-36">${h.time}</span>
+      <span class="${h.status === 'ok' ? 'ok' : h.status === 'warning' ? 'warn' : 'crit'} font-medium">${h.status.toUpperCase()}</span>
+      <span class="text-xs text-gray-400">CPU:${h.metrics.cpu}% MEM:${h.metrics.memory}% DISK:${h.metrics.disk}%</span>
+    </div>
+  `).join('');
+}
+
+// ── 系统指标 ──
+async function loadSystem() {
+  try {
+    const res = await fetch(API + '/api/system/status');
+    const d = await res.json();
+    setMetric('cpu', d.cpu.usage, d.cpu.cores, 'cpuVal', 'cpuBar', 'cpuCores');
+    setMetric('mem', d.memory.percent, null, 'memVal', 'memBar', 'memInfo', d.memory);
+    // 取根磁盘
+    const rootDisk = d.disks.find(dk => dk.mount === '/') || d.disks[0];
+    if (rootDisk) {
+      setMetric('disk', rootDisk.percent, null, 'diskVal', 'diskBar', 'diskInfo', rootDisk);
+    }
+    // 系统详情
+    renderSysinfo(d);
+  } catch (e) {
+    console.error('system error:', e);
+  }
+}
+
+function setMetric(type, pct, cores, valId, barId, infoId, extra) {
+  const valEl = document.getElementById(valId);
+  const barEl = document.getElementById(barId);
+  const infoEl = document.getElementById(infoId);
+  valEl.textContent = pct.toFixed(1) + '%';
+  barEl.style.width = pct + '%';
+  const color = pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-yellow-500' : pct >= 50 ? 'bg-blue-400' : 'bg-green-500';
+  barEl.className = 'pct-fill transition-all ' + color;
+  valEl.className = 'text-3xl font-bold ' + (pct >= 90 ? 'crit' : pct >= 70 ? 'warn' : 'ok');
+  if (type === 'cpu' && cores) infoEl.textContent = cores + ' 核心';
+  if (type === 'mem' && extra) infoEl.textContent = `${fmt(extra.used)} / ${fmt(extra.total)}`;
+  if (type === 'disk' && extra) infoEl.textContent = `${fmt(extra.used)} / ${fmt(extra.total)}`;
+}
+
+function fmt(bytes) {
+  const g = bytes / 1024**3;
+  return g > 1 ? g.toFixed(1) + ' GB' : (bytes / 1024**2).toFixed(0) + ' MB';
+}
+
+function renderSysinfo(d) {
+  const el = document.getElementById('sysinfoContent');
+  el.innerHTML = `
+    <div class="card p-4"><b>主机名:</b> <span class="text-gray-300">${d.hostname}</span></div>
+    <div class="card p-4"><b>平台:</b> <span class="text-gray-300">${d.platform}</span></div>
+    <div class="card p-4"><b>运行时间:</b> <span class="text-gray-300">${d.uptime}</span></div>
+    <div class="card p-4"><b>磁盘详情:</b>
+      <div class="mt-2 space-y-1">${d.disks.map(dk => `
+        <div class="flex gap-4 text-sm">
+          <span class="text-gray-400">${dk.mount}</span>
+          <span class="text-gray-300">${fmt(dk.used)} / ${fmt(dk.total)}</span>
+          <span class="${dk.percent>=90?'crit':dk.percent>=70?'warn':'ok'}">${dk.percent}%</span>
+        </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+// ── Docker ──
+async function loadDocker() {
+  try {
+    const res = await fetch(API + '/api/docker/status');
+    const data = await res.json();
+    if (!data.connected) {
+      document.getElementById('dockerVal').textContent = '离线';
+      document.getElementById('dockerVal').className = 'text-3xl font-bold crit';
+      return;
+    }
+    document.getElementById('dockerVal').textContent = '在线';
+    document.getElementById('dockerVal').className = 'text-3xl font-bold ok';
+    document.getElementById('dockerStatus').textContent = 'v' + data.version;
+
+    // 加载容器列表
+    const cres = await fetch(API + '/api/docker/containers');
+    const containers = await cres.json();
+    const running = containers.filter(c => c.state === 'running').length;
+    document.getElementById('dockerStatus').innerHTML = `${running} / ${containers.length} 运行中`;
+    renderContainers(containers);
+  } catch (e) {
+    document.getElementById('dockerVal').textContent = '离线';
+    document.getElementById('dockerVal').className = 'text-3xl font-bold crit';
+    document.getElementById('dockerStatus').textContent = '无法连接';
+  }
+}
+
+function renderContainers(containers) {
+  const tbody = document.getElementById('containersBody');
+  if (!containers.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="px-4 py-6 text-center text-gray-500">暂无容器</td></tr>';
+    return;
+  }
+  tbody.innerHTML = containers.map(c => `
+    <tr class="hover:bg-gray-800/40 transition">
+      <td class="px-4 py-3 font-mono text-xs text-blue-400">${c.id}</td>
+      <td class="px-4 py-3 text-xs text-gray-400">${c.image}</td>
+      <td class="px-4 py-3">
+        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${c.state==='running'?'bg-green-900 text-green-400':c.state==='exited'?'bg-gray-700 text-gray-400':'bg-yellow-900 text-yellow-400'}">
+          ${c.state}
+        </span>
+      </td>
+      <td class="px-4 py-3 text-xs text-gray-400">${c.ports.length ? c.ports.join(', ') : '-'}</td>
+      <td class="px-4 py-3 text-right space-x-1">
+        ${c.state === 'running'
+          ? `<button onclick="containerOp('${c.id}','stop')" class="text-xs text-yellow-400 hover:underline">停</button>
+             <button onclick="containerOp('${c.id}','restart')" class="text-xs text-blue-400 hover:underline">重启</button>`
+          : `<button onclick="containerOp('${c.id}','start')" class="text-xs text-green-400 hover:underline">启动</button>`}
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function containerOp(id, op) {
+  try {
+    const res = await fetch(API + '/api/docker/containers/' + id + '/' + op, { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) await loadDocker();
+  } catch (e) { alert('操作失败: ' + e.message); }
+}
+
+// ── 日志 ──
+async function loadLogs() {
+  const path = document.getElementById('logPath').value;
+  const lines = document.getElementById('logLines').value;
+  const keyword = document.getElementById('logKeyword').value;
+  const contentEl = document.getElementById('logContent');
+  const metaEl = document.getElementById('logMeta');
+  const totalEl = document.getElementById('logTotal');
+  contentEl.textContent = '加载中...';
+  try {
+    const url = API + '/api/logs/read?path=' + encodeURIComponent(path) + '&lines=' + lines + (keyword ? '&keyword=' + encodeURIComponent(keyword) : '');
+    const res = await fetch(url);
+    const data = await res.json();
+    metaEl.textContent = data.path;
+    totalEl.textContent = `${data.returned_lines} 行 (共 ${data.total_lines} 行)`;
+    if (!data.lines.length) {
+      contentEl.textContent = '(无内容)';
+      return;
+    }
+    contentEl.innerHTML = data.lines.map(line => {
+      const cls = /error|exception|fail|critical/i.test(line) ? 'text-red-400'
+                : /warn/i.test(line) ? 'text-yellow-400'
+                : /info/i.test(line) ? 'text-blue-300'
+                : 'text-gray-300';
+      return `<div class="log-line px-2 py-0.5 rounded ${cls}">${escapeHtml(line)}</div>`;
+    }).join('');
+  } catch (e) {
+    contentEl.textContent = '加载失败: ' + e.message + '\n(提示: 本地开发时需要确保服务器日志路径正确)';
+  }
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── AI 自定义分析 ──
+async function runCustomAnalyze() {
+  const cpu = document.getElementById('aiCpu').value;
+  const mem = document.getElementById('aiMem').value;
+  const disk = document.getElementById('aiDisk').value;
+  const body = {};
+  if (cpu) body.cpu = parseFloat(cpu);
+  if (mem) body.memory = parseFloat(mem);
+  if (disk) body.disk = [{ percent: parseFloat(disk) }];
+  const res = await fetch(API + '/api/ai/analyze', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const data = await res.json();
+  const el = document.getElementById('customResult');
+  if (data.alerts.length) {
+    el.innerHTML = '<div class="p-3 rounded bg-red-900/30 border border-red-700">' +
+      data.alerts.map(a => `<div class="${a.level==='critical'?'crit':'warn'} text-sm mb-1">⚠ ${a.message}</div>`).join('') +
+      '</div>';
+  } else {
+    el.innerHTML = '<div class="p-3 rounded bg-green-900/30 border border-green-700 text-sm ok">✅ 各项指标正常，无告警</div>';
+  }
+}
+
+// ── 启动 ──
+loadAi();
+loadSystem();
+loadDocker();
+</script>
+</body>
+</html>

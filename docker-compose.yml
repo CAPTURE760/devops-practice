@@ -1,0 +1,36 @@
+services:
+  app:
+    build: .
+    container_name: ai-ops-app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # 挂载服务器日志目录（需要先创建）
+      - /var/log/syslog:/var/log/syslog:ro
+      - ./app.log:/app/app.log:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - ops-net
+
+  nginx:
+    image: nginx:alpine
+    container_name: ai-ops-nginx
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./static:/usr/share/nginx/html:ro
+    depends_on:
+      - app
+    networks:
+      - ops-net
+
+networks:
+  ops-net:
+    driver: bridge
