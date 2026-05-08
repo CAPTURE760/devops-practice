@@ -49,17 +49,18 @@ async def list_containers(all_containers: bool = True):
     containers = client.containers.list(all=all_containers)
     result = []
     for c in containers:
+        # 从 attrs["NetworkSettings"]["Ports"] 取端口
         ports = []
-        ports_data = c.ports or {}
-        for protocol_ports in ports_data.values():
-            if protocol_ports and isinstance(protocol_ports, list):
-                for p in protocol_ports:
-                    if isinstance(p, dict) and p.get("PublicPort"):
-                        ports.append(f"{p['PublicPort']}/{p.get('IP', '0.0.0.0')}/{list(ports_data.keys())[0]}")
+        ports_data = c.attrs.get("NetworkSettings", {}).get("Ports") or {}
+        for proto, bindings in ports_data.items():
+            if bindings and isinstance(bindings, list):
+                for b in bindings:
+                    if isinstance(b, dict) and b.get("HostPort"):
+                        ports.append(f"{b['HostPort']}/{proto.split('/')[0]}")
         result.append(ContainerStats(
             id=c.id[:12],
             name=c.name.lstrip("/"),
-            image=str(c.image),
+            image=c.attrs["Config"]["Image"] or str(c.image),
             status=c.status,
             state=c.attrs["State"]["Status"],
             created=c.attrs["Created"],
