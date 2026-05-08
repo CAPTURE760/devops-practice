@@ -8,6 +8,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 阶段2：运行
 FROM python:3.12-slim
 WORKDIR /app
+
+# 配置 pip 使用阿里云镜像
+RUN pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ && \
+    pip config set global.trusted-host mirrors.aliyun.com
+
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY ./app ./app
 COPY ./static ./static
